@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T.O.R.O. - Enlace Local Estudiante</title>
+    <style>
+        :root { --primary: #2e7d32; --dark: #1b5e20; --bg: #f4f6f7; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1, h2 { color: var(--dark); border-bottom: 2px solid var(--primary); padding-bottom: 8px; }
+        .section { margin-bottom: 30px; }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; display: block; text-align: center; text-decoration: none; box-sizing: border-box; }
+        .btn:hover { background: var(--dark); }
+        .lista-items { list-style: none; padding: 0; }
+        .item-descarga { display: flex; justify-content: space-between; align-items: center; background: #f9f9f9; padding: 12px; border-radius: 6px; margin-bottom: 10px; border-left: 4px solid var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Zona de Sincronización Local</h1>
+        
+        <div class="section">
+            <h2>1. Descargar Actividades Disponibles</h2>
+            <button onclick="buscarActividades()" class="btn" style="background:#0288d1; margin-bottom:15px;">🔍 Buscar Tareas en la Red</button>
+            <ul id="listaActividades" class="lista-items">
+                <li style="color:#777">Presiona el botón para escanear el servidor escolar.</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>2. Entregar Reporte de Calificación (.TXT)</h2>
+            <form id="formCalificacion" style="background:#efebe9; padding:15px; border-radius:8px;">
+                <p style="margin-top:0; font-size:14px; color:#5d4037;">Selecciona el archivo cifrado que exportaste al terminar tu actividad:</p>
+                <input type="file" id="archivoTxt" accept=".txt" required style="margin-bottom:15px; width:100%;">
+                <button type="submit" class="btn" style="background:#5d4037">Subir al Servidor del Profesor</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Escanear las actividades publicadas por el profesor
+        async function buscarActividades() {
+            const contenedor = document.getElementById('listaActividades');
+            try {
+                const res = await fetch('/api/lista-actividades');
+                const actividades = await res.json();
+
+                if (actividades.length === 0) {
+                    contenedor.innerHTML = '<li>No hay actividades nuevas publicadas en este momento.</li>';
+                    return;
+                }
+
+                // 1. Agrupar las lecciones por su fecha
+        const gruposPorDia = {};
+        actividades.forEach(act => {
+            if (!gruposPorDia[act.fecha]) {
+                gruposPorDia[act.fecha] = [];
+            }
+            gruposPorDia[act.fecha].push(act.nombre);
+        });
+
+        // 2. Construir los elementos <li> estructurados por día
+        let htmlFinal = '';
+        for (const fecha in gruposPorDia) {
+            // Separador visual de fecha (lo hacemos un poco más compacto también)
+            htmlFinal += `
+                <li style="list-style: none; margin-top: 15px; margin-bottom: 5px;">
+                    <strong style="display: block; background: #e0f2f1; color: #004d40; padding: 5px 10px; border-radius: 4px; font-size: 13px;">
+                        📅 Publicado: ${fecha}
+                    </strong>
+                </li>
+            `;
+            
+            // Insertamos cada una de las lecciones (Diseño COMPACTO)
+            gruposPorDia[fecha].forEach(nombre => {
+                htmlFinal += `
+                    <li style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #eee; background: #fff; gap: 10px;">
+                        <span style="font-weight: 500; color: #333; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1;">
+                            📦 ${nombre}
+                        </span>
+                        
+                        <button 
+                            onclick="descargarActividad('${nombre}')" 
+                            style="background: #2E9443; color: white; border: none; padding:6px 12px; font-size: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;;"
+                        >
+                            Descargar
+                        </button>
+                    </li>
+                `;
+            });
+        }
+        
+        contenedor.innerHTML = htmlFinal;
+
+        } catch (err) {
+        console.error(err);
+        contenedor.innerHTML = '<li style="color:#d32f2f">Error al conectar con el servidor de la escuela.</li>';
+    }
+}
+        // Envío seguro del archivo ofuscado
+        document.getElementById('formCalificacion').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('archivoTxt', document.getElementById('archivoTxt').files[0]);
+
+            try {
+                const response = await fetch('/api/subir-calificacion', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (response.ok) {
+                    alert(data.mensaje);
+                    document.getElementById('formCalificacion').reset();
+                } else { alert(data.error); }
+            } catch (err) { alert('Error crítico al intentar transmitir el archivo.'); }
+        };
+    </script>
+</body>
+</html>

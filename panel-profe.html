@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="jszip.min.js"></script>
+    <title>T.O.R.O. - Panel del Profesor</title>
+    <style>
+        :root { --primary: #2e7d32; --dark: #1b5e20; --bg: #f4f6f7; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1, h2 { color: var(--dark); border-bottom: 2px solid var(--primary); padding-bottom: 8px; }
+        .section { margin-bottom: 35px; }
+        .form-group { background: #f1f8e9; padding: 20px; border-radius: 8px; border: 1px dashed var(--primary); text-align: center; }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: var(--dark); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: var(--primary); color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Módulo de Control Docente</h1>
+        
+        <div class="section">
+            <h2>1. Publicar Nueva Actividad (ZIP)</h2>
+            <form id="formActividad" class="form-group">
+                <input type="file" id="archivoZip" accept=".zip" required>
+                <button type="submit" class="btn">Publicar en la Red</button>
+            </form>
+        </div>
+
+        <div class="section">
+    <h2>2. Historial de Calificaciones Entregadas (Buzón LAN)</h2>
+    <div style="margin-bottom: 15px;">
+        <button onclick="cargarCalificaciones()" class="btn" style="background:#0288d1">🔄 Actualizar Buzón</button>
+        <button onclick="limpiarBuzon()" class="btn" style="background:#d32f2f; float:right;">🗑️ Vaciar Buzón Completo</button>
+    </div>
+    
+    <div id="contenedorCalificaciones">
+        <p>Presiona actualizar para cargar los datos...</p>
+    </div>
+</div>
+    </div>
+
+    <script>
+        // Subir ZIP del profesor
+        document.getElementById('formActividad').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('archivoZip', document.getElementById('archivoZip').files[0]);
+
+            try {
+                const response = await fetch('/api/subir-actividad', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (response.ok) {
+                    alert(data.mensaje);
+                    document.getElementById('formActividad').reset();
+                } else { alert(data.error); }
+            } catch (err) { alert('Error de conexión con el servidor local.'); }
+        };
+
+        // Cargar lista de archivos de calificaciones
+        let calificacionesGlobal = []; // Guardará los datos temporalmente para poder armar los ZIP
+
+async function cargarCalificaciones() {
+    const contenedor = document.getElementById('contenedorCalificaciones');
+    try {
+        const res = await fetch('/api/lista-calificaciones');
+        const archivos = await res.json();
+        
+        if (archivos.length === 0) {
+            contenedor.innerHTML = '<p>No han llegado calificaciones aún.</p>';
+            return;
+        }
+
+        calificacionesGlobal = archivos;
+
+        // 1. Agrupar los archivos por su fecha
+        const gruposPorDia = {};
+        archivos.forEach(archivo => {
+            if (!gruposPorDia[archivo.fecha]) {
+                gruposPorDia[archivo.fecha] = [];
+            }
+            gruposPorDia[archivo.fecha].push(archivo.nombre);
+        });
+
+        // 2. Generar bloques HTML separados por cada día
+        let htmlFinal = '';
+        for (const fecha in gruposPorDia) {
+            htmlFinal += `
+                <div style="background:#fff; border:1px solid #ccc; margin-bottom:25px; border-radius:8px; overflow:hidden;">
+                    <div style="background:#e0e0e0; padding:12px 15px; display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0; border:none; padding:0; color:#333;">📅 Entregas del: ${fecha}</h3>
+                        <button onclick="descargarZipDia('${fecha}')" class="btn" style="background:#f57c00; font-size:13px; padding:6px 12px;">📦 Descargar ZIP del día</button>
+                    </div>
+                    <table style="margin-top:0;">
+                        <tbody>
+                            ${gruposPorDia[fecha].map(nombre => `
+                                <tr>
+                                    <td>📂 ${nombre}</td>
+                                    <td style="width: 120px;">
+                                        <a href="/api/descargar-calificacion/${nombre}" class="btn" style="background:#558b2f; text-decoration:none; padding:5px 10px; font-size:14px;">Individual</a>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+        contenedor.innerHTML = htmlFinal;
+    } catch (err) { 
+        contenedor.innerHTML = '<p>Error al conectar con el servidor local.</p>'; 
+    }
+}
+
+// Función para empaquetar un día específico en un ZIP
+async function descargarZipDia(fecha) {
+    const zip = new JSZip();
+    // Filtramos solo los nombres de los archivos que coinciden con la fecha solicitada
+    const archivosDelDia = calificacionesGlobal.filter(a => a.fecha === fecha).map(a => a.nombre);
+    
+    // Descargamos cada archivo desde el servidor y lo añadimos al paquete ZIP virtual
+    for (const nombre of archivosDelDia) {
+        const res = await fetch(`/api/descargar-calificacion/${nombre}`);
+        const blob = await res.blob();
+        zip.file(nombre, blob);
+    }
+    
+    // Generamos el archivo .zip final y forzamos la descarga en el navegador
+    const contenidoZip = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(contenidoZip);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Reportes_Clase_${fecha}.zip`; // Nombre del paquete
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Función para eliminar permanentemente los archivos del servidor
+async function limpiarBuzon() {
+    if (!confirm('¿Estás seguro de que quieres eliminar TODOS los reportes del servidor? Asegúrate de haber descargado tus ZIPs primero. Esta acción no se puede deshacer.')) return;
+    
+    try {
+        const res = await fetch('/api/limpiar-buzon', { method: 'POST' });
+        const data = await res.json();
+        alert(data.mensaje);
+        cargarCalificaciones(); // Recarga la interfaz para limpiar la pantalla
+    } catch (err) {
+        alert('Hubo un error al intentar vaciar el buzón.');
+    }
+}
+    </script>
+</body>
+</html>
