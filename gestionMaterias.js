@@ -58,7 +58,7 @@ async function eliminarMateria(event, idMateria, nombreMateria) {
         };
 
         transaction.oncomplete = () => {
-            console.log(`Materia ${idMateria} y sus lecciones eliminadas.`);
+            //console.log(`Materia ${idMateria} y sus lecciones eliminadas.`);
             cargarPantallaMaterias();
         };
 
